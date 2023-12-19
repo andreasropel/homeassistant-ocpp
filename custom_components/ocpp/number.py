@@ -132,7 +132,7 @@ class OcppNumber(RestoreNumber, NumberEntity):
     #        return False
     #    return self.central_system.get_available(self.cp_id)  # type: ignore [no-any-return]
 
-    async def async_set_native_value(self, value):
+    async def async_set_native_value(self, value): 
         """Set new value."""
         num_value = float(value)
 
