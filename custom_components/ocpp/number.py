@@ -46,6 +46,16 @@ NUMBERS: Final = [
         native_step=1,
         native_unit_of_measurement=ELECTRIC_CURRENT_AMPERE,
     ),
+    OcppNumberDescription(
+        key="setpoint_current",
+        name="Current Setpoint",
+        icon=ICON,
+        initial_value=6,
+        native_min_value=-16,
+        native_max_value=16,
+        native_step=0.1,
+        native_unit_of_measurement=ELECTRIC_CURRENT_AMPERE,
+    ),
 ]
 
 
@@ -61,6 +71,10 @@ async def async_setup_entry(hass, entry, async_add_devices):
         if ent.key == "maximum_current":
             ent.initial_value = entry.data.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT)
             ent.native_max_value = entry.data.get(CONF_MAX_CURRENT, DEFAULT_MAX_CURRENT)
+        elif ent.key == "setpoint_current":
+            ent.initial_value = 6
+            ent.native_max_value = 16
+
         entities.append(OcppNumber(hass, central_system, cp_id, ent))
 
     async_add_devices(entities, False)
@@ -121,12 +135,24 @@ class OcppNumber(RestoreNumber, NumberEntity):
     async def async_set_native_value(self, value):
         """Set new value."""
         num_value = float(value)
-        if self.central_system.get_available(
-            self.cp_id
-        ) and Profiles.SMART & self.central_system.get_supported_features(self.cp_id):
-            resp = await self.central_system.set_max_charge_rate_amps(
-                self.cp_id, num_value
-            )
-            if resp is True:
-                self._attr_native_value = num_value
-                self.async_write_ha_state()
+
+        if self.entity_description.key == "maximum_current":
+            if self.central_system.get_available(
+                self.cp_id
+            ) and Profiles.SMART & self.central_system.get_supported_features(self.cp_id):
+                resp = await self.central_system.set_max_charge_rate_amps(
+                    self.cp_id, num_value
+                )
+                if resp is True:
+                    self._attr_native_value = num_value
+                    self.async_write_ha_state()
+
+        elif self.entity_description.key == "setpoint_current":
+            if self.central_system.get_available(self.cp_id):
+                resp = await self.central_system.set_charging_current(
+                    self.cp_id, num_value
+                )
+
+                if resp is True:
+                    self._attr_native_value = num_value
+                    self.async_write_ha_state()

@@ -287,6 +287,23 @@ class CentralSystem:
             return await self.charge_points[cp_id].set_charge_rate(limit_amps=value)
         return False
 
+    async def set_charging_current(self, cp_id: str, value: float):
+        """Set the charging current setpoints for all three phases."""
+        if cp_id in self.charge_points:
+            current = min(abs(value), 16.0)
+
+            return await self.charge_points[cp_id]\
+                .data_transfer(
+                    vendor_id="de.eSystems.config",
+                    message_id="SetChargingCurrent",
+                    data=("{"
+                        f'"limitL1": {current},'
+                        f'"limitL2": {current},'
+                        f'"limitL3": {current}'
+                        "}")
+                    )
+        return False
+
     async def set_charger_state(
         self, cp_id: str, service_name: str, state: bool = True
     ):
@@ -370,7 +387,6 @@ class ChargePoint(cp):
 
     async def post_connect(self):
         """Logic to be executed right after a charger connects."""
-
         # Define custom service handles for charge point
         async def handle_clear_profile(call):
             """Handle the clear profile service call."""
@@ -430,31 +446,10 @@ class ChargePoint(cp):
             resp = await self.get_configuration(ckey.number_of_connectors.value)
             self._metrics[cdet.connectors.value].value = resp
             await self.get_configuration(ckey.heartbeat_interval.value)
-
-            all_measurands = self.entry.data.get(
-                CONF_MONITORED_VARIABLES, DEFAULT_MEASURAND
-            )
-
-            accepted_measurands = []
-            key = ckey.meter_values_sampled_data.value
-
-            for measurand in all_measurands.split(","):
-                _LOGGER.debug(f"'{self.id}' trying measurand '{measurand}'")
-                req = call.ChangeConfigurationPayload(key=key, value=measurand)
-                resp = await self.call(req)
-                if resp.status == ConfigurationStatus.accepted:
-                    _LOGGER.debug(f"'{self.id}' adding measurand '{measurand}'")
-                    accepted_measurands.append(measurand)
-
-            accepted_measurands = ",".join(accepted_measurands)
-
-            _LOGGER.debug(f"'{self.id}' allowed measurands '{accepted_measurands}'")
-
             await self.configure(
                 ckey.meter_values_sampled_data.value,
-                accepted_measurands,
+                self.entry.data.get(CONF_MONITORED_VARIABLES, DEFAULT_MEASURAND),
             )
-
             await self.configure(
                 ckey.meter_value_sample_interval.value,
                 str(self.entry.data.get(CONF_METER_INTERVAL, DEFAULT_METER_INTERVAL)),
@@ -515,7 +510,7 @@ class ChargePoint(cp):
                 if self.received_boot_notification is False:
                     await self.trigger_boot_notification()
                 await self.trigger_status_notification()
-        except NotImplementedError as e:
+        except (NotImplementedError) as e:
             _LOGGER.error("Configuration of the charger failed: %s", e)
 
     async def get_supported_features(self):
